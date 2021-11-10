@@ -1,13 +1,20 @@
 package com.example.client_lower;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
 import android.graphics.Color;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.Message;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
+
+import com.example.client_lower.utils.MessageType;
 
 import java.io.IOException;
 import java.net.DatagramPacket;
@@ -24,11 +31,12 @@ import java.util.TimerTask;
 public class MainActivity extends AppCompatActivity {
 
     private final static int port = 3600;
-    private boolean device_up = false;
     private byte[] buffer = new byte[1024];
     private DatagramSocket socket;
     private DatagramPacket packet;
     private TextView textView;
+
+    Handler handler;
 
     private final static String TAG = "MainActivity";
 
@@ -37,70 +45,38 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        Button rcv_button = findViewById(R.id.button_rcvpacket);
         textView = findViewById(R.id.rcv_order);
-        rcv_button.setBackgroundColor(Color.GREEN);
-        rcv_button.setText("接收指令");
 
-        Log.d(TAG, "onCreate: " + getIPAddress(true));
+        handler = new Handler(new Handler.Callback() {
+            @Override
+            public boolean handleMessage(@NonNull Message msg) {
+                switch (MessageType.getFromInt(msg.what)) {
+                    case RECORD_START:
+                        textView.setText("正在录制…");
+                        break;
+                    case RECORD_STOP:
+                        textView.setText("已停止录制");
+                        break;
+                    default:
+                        throw new IllegalStateException("Unexpected value: " + MessageType.getFromInt(msg.what));
+                }
+                return false;
+            }
+        });
 
         try {
             socket = new DatagramSocket(port, InetAddress.getByName(ipToBroadcast(getIPAddress(true))));
             socket.setBroadcast(true);
-        } catch (SocketException e) {
+        } catch (SocketException | UnknownHostException e) {
             Log.d(TAG, "onCreate: " + e);
-            e.printStackTrace();
-        } catch (UnknownHostException e) {
             e.printStackTrace();
         }
 
 
         packet = new DatagramPacket(buffer, buffer.length);
 
-        final Timer[] timer = {null};
-
-        rcv_button.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if(rcv_button.getText().equals("接收指令")) {
-                    rcv_button.setText("终止程序");
-                    rcv_button.setBackgroundColor(Color.RED);
-                    timer[0] = new Timer();
-                    timer[0].schedule(new TimerTask() {
-                        @Override
-                        public void run() {
-                            recvPacket();
-                        }
-                    }, 0, 100);
-                } else {
-                    rcv_button.setText("接收指令");
-                    rcv_button.setBackgroundColor(Color.GREEN);
-                    if (null == timer[0]) return;
-                    timer[0].cancel();
-                    timer[0] = null;
-                }
-            }
-        });
-    }
-
-    private void recvPacket() {
-        try {
-            socket.receive(packet);
-
-            Log.d(TAG, "recvPacket: " + "yes");
-
-            String msg = new String(buffer, 0, packet.getLength());
-            Log.d(TAG, "recvPacket: " + msg);
-            if(msg.equals("true")) {
-                textView.setText("Device Open");
-            } else {
-                textView.setText("Device Close");
-            }
-        } catch (IOException e) {
-            Log.d(TAG, "recvPacket: " + e);
-            e.printStackTrace();
-        }
-
+        Timer timer = new Timer();
+        timer.schedule(new RecordTimerTask(), 0, 100);
     }
 
     public static String getIPAddress(boolean useIPv4) {
@@ -141,5 +117,27 @@ public class MainActivity extends AppCompatActivity {
         }
         broadcast_ip_str += ip_list[ip_list.length - 1];
         return broadcast_ip_str;
+    }
+
+    public class RecordTimerTask extends TimerTask{
+        @Override
+        public void run() {
+            try {
+                Log.d(TAG, "run: " + "??");
+                socket.receive(packet);
+
+                String msg = new String(buffer, 0, packet.getLength());
+                if(msg.equals("true") || msg.equals("false")) {
+                    Message m = new Message();
+                    m.what = msg.equals("true") ? MessageType.RECORD_START.toInt() : MessageType.RECORD_STOP.toInt();
+                    handler.sendMessage(m);
+                } else {
+                    Log.d(TAG, "run: " + "Confusing Message");
+                }
+            } catch (IOException e) {
+                Log.d(TAG, "recvPacket: " + e);
+                e.printStackTrace();
+            }
+        }
     }
 }
