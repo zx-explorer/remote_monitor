@@ -28,6 +28,17 @@
       android:layout_gravity="top" />
 
   <TextView
+      android:id="@+id/rcv_order"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_above="@id/distancText"
+      android:layout_alignParentBottom="true"
+      android:layout_marginBottom="58dp"
+      android:gravity="center"
+      android:text="TEST"
+      android:textAlignment="center" />
+
+  <TextView
       android:id="@+id/distancText"
       android:layout_width="wrap_content"
       android:layout_height="wrap_content"
@@ -82,7 +93,7 @@
       android:id="@+id/imageView"
       android:layout_width="match_parent"
       android:layout_height="match_parent"
-      android:scaleX="1.2"
+      android:scaleX="1.0"
       android:scaleY="1.2"
       app:srcCompat="?android:attr/listChoiceIndicatorSingle" />
 

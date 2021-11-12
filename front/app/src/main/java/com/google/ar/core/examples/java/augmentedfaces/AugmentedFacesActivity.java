@@ -16,27 +16,49 @@
 
 package com.google.ar.core.examples.java.augmentedfaces;
 
+import com.google.ar.core.examples.java.augmentedfaces.utils.MessageType;
+
+import android.Manifest;
 import android.app.Activity;
+import android.content.ContentResolver;
+import android.content.ContentValues;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.os.Handler;
+import android.os.Message;
 import android.os.SystemClock;
+import android.provider.DocumentsContract;
+import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
 import android.widget.Chronometer;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+
 import com.google.ar.core.ArCoreApk;
 import com.google.ar.core.AugmentedFace;
-import com.google.ar.core.AugmentedFace.RegionType;
 import com.google.ar.core.Camera;
 import com.google.ar.core.CameraConfig;
 import com.google.ar.core.CameraConfigFilter;
 import com.google.ar.core.Config;
 import com.google.ar.core.Config.AugmentedFaceMode;
 import com.google.ar.core.Frame;
+import com.google.ar.core.PlaybackStatus;
 import com.google.ar.core.Pose;
+import com.google.ar.core.RecordingConfig;
+import com.google.ar.core.RecordingStatus;
 import com.google.ar.core.Session;
 import com.google.ar.core.TrackingState;
 import com.google.ar.core.examples.java.common.helpers.CameraPermissionHelper;
@@ -47,43 +69,35 @@ import com.google.ar.core.examples.java.common.helpers.TrackingStateHelper;
 import com.google.ar.core.examples.java.common.rendering.BackgroundRenderer;
 import com.google.ar.core.examples.java.common.rendering.ObjectRenderer;
 import com.google.ar.core.exceptions.CameraNotAvailableException;
+import com.google.ar.core.exceptions.PlaybackFailedException;
+import com.google.ar.core.exceptions.RecordingFailedException;
 import com.google.ar.core.exceptions.UnavailableApkTooOldException;
 import com.google.ar.core.exceptions.UnavailableArcoreNotInstalledException;
 import com.google.ar.core.exceptions.UnavailableDeviceNotCompatibleException;
 import com.google.ar.core.exceptions.UnavailableSdkTooOldException;
 import com.google.ar.core.exceptions.UnavailableUserDeclinedInstallationException;
+
+import java.io.File;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
+import java.net.UnknownHostException;
 import java.text.DecimalFormat;
+import java.text.SimpleDateFormat;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
+
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
-import android.widget.Button;
-import android.net.Uri;
-import com.google.ar.core.RecordingConfig;
-import com.google.ar.core.RecordingStatus;
-import com.google.ar.core.exceptions.RecordingFailedException;
-import java.text.SimpleDateFormat;
-import android.content.ContentResolver;
-import android.net.Uri;
-import android.os.Build;
-import android.os.Environment;
-import android.provider.MediaStore;
-import android.content.ContentValues;
-import java.io.File;
-import android.content.CursorLoader;
-import android.database.Cursor;
-import java.util.Date;
-import android.Manifest;
-import android.content.pm.PackageManager;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
-import android.content.Intent;
-import android.provider.DocumentsContract;
-import com.google.ar.core.PlaybackStatus;
-import com.google.ar.core.exceptions.PlaybackFailedException;
 
 
 /**
@@ -133,6 +147,13 @@ public class AugmentedFacesActivity extends AppCompatActivity implements GLSurfa
 
   private Chronometer mChronometer;
   int current = 0;
+  private final static int port = 3600;
+  private byte[] buffer = new byte[1024];
+  private DatagramSocket socket;
+  private DatagramPacket packet;
+  private TextView textView;
+
+  Handler handler;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -165,6 +186,40 @@ public class AugmentedFacesActivity extends AppCompatActivity implements GLSurfa
     alertView.setText((String) this.getResources().getText(R.string.too_far));
     alertView.setVisibility(View.VISIBLE);
     installRequested = false;
+
+    textView = findViewById(R.id.rcv_order);
+
+    handler = new Handler(new Handler.Callback() {
+      @Override
+      public boolean handleMessage(@NonNull Message msg) {
+        Log.d("MSG", String.valueOf(msg));
+        switch (MessageType.getFromInt(msg.what)) {
+          case RECORD_START:
+            textView.setText("正在录制…");
+            break;
+          case RECORD_STOP:
+            textView.setText("已停止录制");
+            break;
+          default:
+            throw new IllegalStateException("Unexpected value: " + MessageType.getFromInt(msg.what));
+        }
+        return false;
+      }
+    });
+
+    try {
+      socket = new DatagramSocket(port, InetAddress.getByName(ipToBroadcast(getIPAddress(true))));
+      socket.setBroadcast(true);
+    } catch (SocketException | UnknownHostException e) {
+      Log.d(TAG, "onCreate: " + e);
+      e.printStackTrace();
+    }
+
+
+    packet = new DatagramPacket(buffer, buffer.length);
+
+    Timer timer = new Timer();
+    timer.schedule(new RecordTimerTask(), 0, 100);
   }
 
   @Override
@@ -870,5 +925,67 @@ public class AugmentedFacesActivity extends AppCompatActivity implements GLSurfa
     String mm = (time % 3600) / 60 > 9 ? (time % 3600) / 60 + "" : "0" + (time % 3600) / 60;
     String ss = (time % 3600) % 60 > 9 ? (time % 3600) % 60 + "" : "0" + (time % 3600) % 60;
     return hh + ":" + mm + ":" + ss;
+  }
+
+  public static String getIPAddress(boolean useIPv4) {
+    try {
+      List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
+      for (NetworkInterface intf : interfaces) {
+        List<InetAddress> addrs = Collections.list(intf.getInetAddresses());
+        for (InetAddress addr : addrs) {
+          if (!addr.isLoopbackAddress()) {
+            String sAddr = addr.getHostAddress();
+            //boolean isIPv4 = InetAddressUtils.isIPv4Address(sAddr);
+            boolean isIPv4 = sAddr.indexOf(':')<0;
+
+            if (useIPv4) {
+              if (isIPv4)
+                return sAddr;
+            } else {
+              if (!isIPv4) {
+                int delim = sAddr.indexOf('%'); // drop ip6 zone suffix
+                return delim<0 ? sAddr.toUpperCase() : sAddr.substring(0, delim).toUpperCase();
+              }
+            }
+          }
+        }
+      }
+    } catch (Exception ignored) { } // for now eat exceptions
+    return "";
+  }
+
+  private String ipToBroadcast(String ip_str) {
+    String[] ip_list = ip_str.split("\\.");
+    ip_list[3] = "255";
+
+    String broadcast_ip_str = "";
+    for(int i = 0; i < ip_list.length - 1; ++i) {
+      broadcast_ip_str += ip_list[i];
+      broadcast_ip_str += ".";
+    }
+    broadcast_ip_str += ip_list[ip_list.length - 1];
+    return broadcast_ip_str;
+  }
+
+  public class RecordTimerTask extends TimerTask {
+    @Override
+    public void run() {
+      try {
+        Log.d(TAG, "run: " + "??");
+        socket.receive(packet);
+
+        String msg = new String(buffer, 0, packet.getLength());
+        if(msg.equals("true") || msg.equals("false")) {
+          Message m = new Message();
+          m.what = msg.equals("true") ? MessageType.RECORD_START.toInt() : MessageType.RECORD_STOP.toInt();
+          handler.sendMessage(m);
+        } else {
+          Log.d(TAG, "run: " + "Confusing Message");
+        }
+      } catch (IOException e) {
+        Log.d(TAG, "recvPacket: " + e);
+        e.printStackTrace();
+      }
+    }
   }
 }
