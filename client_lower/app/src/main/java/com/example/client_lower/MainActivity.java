@@ -50,6 +50,7 @@ public class MainActivity extends AppCompatActivity {
         handler = new Handler(new Handler.Callback() {
             @Override
             public boolean handleMessage(@NonNull Message msg) {
+                Log.d("MSG", String.valueOf(msg));
                 switch (MessageType.getFromInt(msg.what)) {
                     case RECORD_START:
                         textView.setText("正在录制…");

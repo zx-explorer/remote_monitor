@@ -18,10 +18,11 @@
 <!--            android:layout_height="75dp"/>-->
         <TextView
             android:id="@+id/rcv_order"
-            android:textSize="30dp"
-            android:textColor="@color/black"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:text="test"
+            android:textColor="@color/black"
+            android:textSize="30dp" />
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
