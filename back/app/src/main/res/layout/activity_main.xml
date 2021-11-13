@@ -32,6 +32,14 @@
       android:layout_marginTop="0dp"
       android:gravity="center" />
 
+  <TextView
+      android:id="@+id/rcv_order"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_alignBottom="@id/surfaceview"
+      android:gravity="center"
+      android:text="@string/noBroadcast" />
+
   <ImageButton
       android:id="@+id/settings_button"
       android:layout_width="wrap_content"

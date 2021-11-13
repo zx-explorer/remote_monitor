@@ -151,7 +151,7 @@ public class AugmentedFacesActivity extends AppCompatActivity implements GLSurfa
   private byte[] buffer = new byte[1024];
   private DatagramSocket socket;
   private DatagramPacket packet;
-  private TextView textView;
+  private TextView broadcastText;
 
   Handler handler;
 
@@ -187,7 +187,7 @@ public class AugmentedFacesActivity extends AppCompatActivity implements GLSurfa
     alertView.setVisibility(View.VISIBLE);
     installRequested = false;
 
-    textView = findViewById(R.id.rcv_order);
+    broadcastText = findViewById(R.id.rcv_order);
 
     handler = new Handler(new Handler.Callback() {
       @Override
@@ -203,10 +203,10 @@ public class AugmentedFacesActivity extends AppCompatActivity implements GLSurfa
                 onBroadcastRecord(recordButtonView);
                 break;
             }
-            textView.setText("正在录制…");
+            broadcastText.setText("正在录制…");
             break;
           case RECORD_STOP:
-            textView.setText("已停止录制");
+            broadcastText.setText("已停止录制");
             onBroadcastStop(recordButtonView);
             break;
           default:
