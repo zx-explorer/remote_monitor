@@ -192,13 +192,22 @@ public class AugmentedFacesActivity extends AppCompatActivity implements GLSurfa
     handler = new Handler(new Handler.Callback() {
       @Override
       public boolean handleMessage(@NonNull Message msg) {
-        Log.d("MSG", String.valueOf(msg));
+        View recordButtonView = findViewById(R.id.record_button);
+        Button recordButton = (Button)recordButtonView;
+        Log.d(TAG, "GET MSG: " + String.valueOf(msg));
         switch (MessageType.getFromInt(msg.what)) {
           case RECORD_START:
+            switch (appState) {
+              // The app is neither recording nor playing back. The "Playback" button is visible.
+              case Idle:
+                onBroadcastRecord(recordButtonView);
+                break;
+            }
             textView.setText("正在录制…");
             break;
           case RECORD_STOP:
             textView.setText("已停止录制");
+            onBroadcastStop(recordButtonView);
             break;
           default:
             throw new IllegalStateException("Unexpected value: " + MessageType.getFromInt(msg.what));
@@ -570,6 +579,30 @@ public class AugmentedFacesActivity extends AppCompatActivity implements GLSurfa
         button.setVisibility(View.INVISIBLE);
         break;
     }
+  }
+
+  // Handle the "Record" broadcast event.
+  public void onBroadcastRecord(View view) {
+    Log.d(TAG, "onBroadcastRecord");
+    distanceView.setVisibility(View.VISIBLE);
+    boolean hasStarted = startRecording();
+    Log.d(TAG, String.format("onBroadcastRecord start: hasStarted %b", hasStarted));
+    if (hasStarted)
+      appState = AppState.Recording;
+    updateRecordButton();
+    updatePlaybackButton();
+  }
+
+  // Handle the "Stop" broadcast event.
+  public void onBroadcastStop(View view) {
+    Log.d(TAG, "onBroadcastStop");
+    distanceView.setVisibility(View.INVISIBLE);
+    boolean hasStopped = stopRecording();
+    Log.d(TAG, String.format("onBroadcastStop stop: hasStopped %b", hasStopped));
+    if (hasStopped)
+      appState = AppState.Idle;
+    updateRecordButton();
+    updatePlaybackButton();
   }
 
   // Handle the "Record" button click event.
