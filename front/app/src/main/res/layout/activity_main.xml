@@ -35,7 +35,7 @@
       android:layout_alignParentBottom="true"
       android:layout_marginBottom="58dp"
       android:gravity="center"
-      android:text="TEST"
+      android:text="@string/noBroadcast"
       android:textAlignment="center" />
 
   <TextView

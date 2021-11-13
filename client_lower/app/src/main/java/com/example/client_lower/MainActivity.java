@@ -66,6 +66,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         try {
+            Log.d(TAG, "GET IPTOBROADCAST: " + getIPAddress(true));
             socket = new DatagramSocket(port, InetAddress.getByName(ipToBroadcast(getIPAddress(true))));
             socket.setBroadcast(true);
         } catch (SocketException | UnknownHostException e) {

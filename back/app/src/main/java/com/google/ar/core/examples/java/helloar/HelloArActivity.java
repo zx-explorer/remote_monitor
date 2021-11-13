@@ -16,25 +16,44 @@
 
 package com.google.ar.core.examples.java.helloar;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.media.Image;
+import android.net.Uri;
 import android.opengl.GLES30;
 import android.opengl.GLSurfaceView;
 import android.opengl.Matrix;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.os.Handler;
+import android.os.Message;
 import android.os.SystemClock;
+import android.provider.DocumentsContract;
+import android.provider.MediaStore;
 import android.util.Log;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
+import android.widget.Button;
 import android.widget.Chronometer;
 import android.widget.ImageButton;
 import android.widget.PopupMenu;
+import android.widget.TextView;
 import android.widget.Toast;
+
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+
 import com.google.ar.core.Anchor;
 import com.google.ar.core.ArCoreApk;
 import com.google.ar.core.Camera;
@@ -46,9 +65,12 @@ import com.google.ar.core.HitResult;
 import com.google.ar.core.InstantPlacementPoint;
 import com.google.ar.core.LightEstimate;
 import com.google.ar.core.Plane;
+import com.google.ar.core.PlaybackStatus;
 import com.google.ar.core.Point;
 import com.google.ar.core.Point.OrientationMode;
-import com.google.ar.core.PointCloud;
+import com.google.ar.core.Pose;
+import com.google.ar.core.RecordingConfig;
+import com.google.ar.core.RecordingStatus;
 import com.google.ar.core.Session;
 import com.google.ar.core.Trackable;
 import com.google.ar.core.TrackingFailureReason;
@@ -71,49 +93,37 @@ import com.google.ar.core.examples.java.common.samplerender.VertexBuffer;
 import com.google.ar.core.examples.java.common.samplerender.arcore.BackgroundRenderer;
 import com.google.ar.core.examples.java.common.samplerender.arcore.PlaneRenderer;
 import com.google.ar.core.examples.java.common.samplerender.arcore.SpecularCubemapFilter;
+import com.google.ar.core.examples.java.helloar.utils.MessageType;
 import com.google.ar.core.exceptions.CameraNotAvailableException;
 import com.google.ar.core.exceptions.NotYetAvailableException;
+import com.google.ar.core.exceptions.PlaybackFailedException;
+import com.google.ar.core.exceptions.RecordingFailedException;
 import com.google.ar.core.exceptions.UnavailableApkTooOldException;
 import com.google.ar.core.exceptions.UnavailableArcoreNotInstalledException;
 import com.google.ar.core.exceptions.UnavailableDeviceNotCompatibleException;
 import com.google.ar.core.exceptions.UnavailableSdkTooOldException;
 import com.google.ar.core.exceptions.UnavailableUserDeclinedInstallationException;
+
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.nio.FloatBuffer;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
-import android.widget.Button;
-import android.net.Uri;
-import com.google.ar.core.RecordingConfig;
-import com.google.ar.core.RecordingStatus;
-import com.google.ar.core.exceptions.RecordingFailedException;
-import java.text.SimpleDateFormat;
-import android.content.ContentResolver;
-import android.net.Uri;
-import android.os.Build;
-import android.os.Environment;
-import android.provider.MediaStore;
-import android.content.ContentValues;
-import java.io.File;
-import android.content.CursorLoader;
-import android.database.Cursor;
-import java.util.Date;
-import android.Manifest;
-import android.content.pm.PackageManager;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
-import android.content.Intent;
-import android.provider.DocumentsContract;
-import com.google.ar.core.PlaybackStatus;
-import com.google.ar.core.exceptions.PlaybackFailedException;
-import java.util.UUID;
-import com.google.ar.core.Track;
-import com.google.ar.core.Pose;
-import java.nio.FloatBuffer;
-import com.google.ar.core.TrackData;
-
+import java.util.Timer;
+import java.util.TimerTask;
 
 /**
  * This is a simple example that shows how to create an augmented reality (AR) application using the
@@ -134,8 +144,8 @@ public class HelloArActivity extends AppCompatActivity implements SampleRender.R
 
   private static final String TAG = HelloArActivity.class.getSimpleName();
 
-  private static final String SEARCHING_PLANE_MESSAGE = "Searching for surfaces...";
-  private static final String WAITING_FOR_TAP_MESSAGE = "Tap on a surface to place an object.";
+  private static final String SEARCHING_PLANE_MESSAGE = "Please keep good light condition";
+  private static final String WAITING_FOR_TAP_MESSAGE = "Please keep good light condition";
 
   // See the definition of updateSphericalHarmonicsCoefficients for an explanation of these
   // constants.
@@ -221,6 +231,14 @@ public class HelloArActivity extends AppCompatActivity implements SampleRender.R
   private Chronometer mChronometer;
   int current = 0;
 
+  private final static int port = 3600;
+  private byte[] buffer = new byte[1024];
+  private DatagramSocket socket;
+  private DatagramPacket packet;
+  private TextView broadcastText;
+
+  Handler handler;
+
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
@@ -228,6 +246,52 @@ public class HelloArActivity extends AppCompatActivity implements SampleRender.R
     surfaceView = findViewById(R.id.surfaceview);
     displayRotationHelper = new DisplayRotationHelper(/*context=*/ this);
     mChronometer = findViewById(R.id.chronometer);
+
+    broadcastText = findViewById(R.id.rcv_order);
+    String IPAddress = getIPAddress(true);
+    Log.d(TAG, "GET IPTOBROADCAST: " + IPAddress);
+
+    handler = new Handler(new Handler.Callback() {
+      @Override
+      public boolean handleMessage(@NonNull Message msg) {
+        View recordButtonView = findViewById(R.id.record_button);
+        Button recordButton = (Button)recordButtonView;
+        Log.d("MSG", String.valueOf(msg));
+        switch (MessageType.getFromInt(msg.what)) {
+          case RECORD_START:
+            switch (appState) {
+              // The app is neither recording nor playing back. The "Playback" button is visible.
+              case Idle:
+                onBroadcastRecord(recordButtonView);
+                break;
+            }
+            broadcastText.setText("正在录制…");
+            break;
+          case RECORD_STOP:
+            broadcastText.setText("已停止录制");
+            onBroadcastStop(recordButtonView);
+            break;
+          default:
+            throw new IllegalStateException("Unexpected value: " + MessageType.getFromInt(msg.what));
+        }
+        return false;
+      }
+    });
+
+    if(IPAddress.length() > 0) {
+      try {
+        socket = new DatagramSocket(port, InetAddress.getByName(ipToBroadcast(getIPAddress(true))));
+        socket.setBroadcast(true);
+      } catch (SocketException | UnknownHostException e) {
+        Log.d(TAG, "onCreate: " + e);
+        e.printStackTrace();
+      }
+      packet = new DatagramPacket(buffer, buffer.length);
+      Timer timer = new Timer();
+      timer.schedule(new RecordTimerTask(), 0, 100);
+    }else {
+      broadcastText.setText("IP地址获取失败");
+    }
 
     // Set up touch listener.
     tapHelper = new TapHelper(/*context=*/ this);
@@ -923,6 +987,28 @@ public class HelloArActivity extends AppCompatActivity implements SampleRender.R
     }
   }
 
+  // Handle the "Record" broadcast event.
+  public void onBroadcastRecord(View view) {
+    Log.d(TAG, "onBroadcastRecord");
+    boolean hasStarted = startRecording();
+    Log.d(TAG, String.format("onBroadcastRecord start: hasStarted %b", hasStarted));
+    if (hasStarted)
+      appState = AppState.Recording;
+    updateRecordButton();
+    updatePlaybackButton();
+  }
+
+  // Handle the "Stop" broadcast event.
+  public void onBroadcastStop(View view) {
+    Log.d(TAG, "onBroadcastStop");
+    boolean hasStopped = stopRecording();
+    Log.d(TAG, String.format("onBroadcastStop stop: hasStopped %b", hasStopped));
+    if (hasStopped)
+      appState = AppState.Idle;
+    updateRecordButton();
+    updatePlaybackButton();
+  }
+
   // Handle the "Record" button click event.
   public void onClickRecord(View view) {
     Log.d(TAG, "onClickRecord");
@@ -1300,5 +1386,67 @@ public class HelloArActivity extends AppCompatActivity implements SampleRender.R
     String mm = (time % 3600) / 60 > 9 ? (time % 3600) / 60 + "" : "0" + (time % 3600) / 60;
     String ss = (time % 3600) % 60 > 9 ? (time % 3600) % 60 + "" : "0" + (time % 3600) % 60;
     return hh + ":" + mm + ":" + ss;
+  }
+
+  public static String getIPAddress(boolean useIPv4) {
+    try {
+      List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
+      for (NetworkInterface intf : interfaces) {
+        List<InetAddress> addrs = Collections.list(intf.getInetAddresses());
+        for (InetAddress addr : addrs) {
+          if (!addr.isLoopbackAddress()) {
+            String sAddr = addr.getHostAddress();
+            //boolean isIPv4 = InetAddressUtils.isIPv4Address(sAddr);
+            boolean isIPv4 = sAddr.indexOf(':')<0;
+
+            if (useIPv4) {
+              if (isIPv4)
+                return sAddr;
+            } else {
+              if (!isIPv4) {
+                int delim = sAddr.indexOf('%'); // drop ip6 zone suffix
+                return delim<0 ? sAddr.toUpperCase() : sAddr.substring(0, delim).toUpperCase();
+              }
+            }
+          }
+        }
+      }
+    } catch (Exception ignored) { } // for now eat exceptions
+    return "";
+  }
+
+  private String ipToBroadcast(String ip_str) {
+    String[] ip_list = ip_str.split("\\.");
+    ip_list[3] = "255";
+
+    String broadcast_ip_str = "";
+    for(int i = 0; i < ip_list.length - 1; ++i) {
+      broadcast_ip_str += ip_list[i];
+      broadcast_ip_str += ".";
+    }
+    broadcast_ip_str += ip_list[ip_list.length - 1];
+    return broadcast_ip_str;
+  }
+
+  public class RecordTimerTask extends TimerTask{
+    @Override
+    public void run() {
+      try {
+        Log.d(TAG, "run: " + "??");
+        socket.receive(packet);
+
+        String msg = new String(buffer, 0, packet.getLength());
+        if(msg.equals("true") || msg.equals("false")) {
+          Message m = new Message();
+          m.what = msg.equals("true") ? MessageType.RECORD_START.toInt() : MessageType.RECORD_STOP.toInt();
+          handler.sendMessage(m);
+        } else {
+          Log.d(TAG, "run: " + "Confusing Message");
+        }
+      } catch (IOException e) {
+        Log.d(TAG, "recvPacket: " + e);
+        e.printStackTrace();
+      }
+    }
   }
 }

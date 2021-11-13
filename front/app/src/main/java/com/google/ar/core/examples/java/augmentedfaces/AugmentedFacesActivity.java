@@ -92,6 +92,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.EnumSet;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -165,29 +166,9 @@ public class AugmentedFacesActivity extends AppCompatActivity implements GLSurfa
     displayRotationHelper = new DisplayRotationHelper(/*context=*/ this);
     mChronometer = findViewById(R.id.chronometer);
 
-    //正数计时设置初始值（重置）
-    mChronometer.setBase(0);
-    //正数计时事件监听器，时间发生变化时可进行操作
-    mChronometer.setOnChronometerTickListener(this);
-    //设置格式(默认"MM:SS"格式)
-    mChronometer.setFormat("%s");
-    mChronometer.setText(FormatMiss(current));
-    initData();
-
-    // Set up renderer.
-    surfaceView.setPreserveEGLContextOnPause(true);
-    surfaceView.setEGLContextClientVersion(2);
-    surfaceView.setEGLConfigChooser(8, 8, 8, 8, 16, 0); // Alpha used for plane blending.
-    surfaceView.setRenderer(this);
-    surfaceView.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
-    surfaceView.setWillNotDraw(false);
-
-    distanceView.setVisibility(View.INVISIBLE);
-    alertView.setText((String) this.getResources().getText(R.string.too_far));
-    alertView.setVisibility(View.VISIBLE);
-    installRequested = false;
-
     broadcastText = findViewById(R.id.rcv_order);
+    String IPAddress = getIPAddress(true);
+    Log.d(TAG, "GET IPTOBROADCAST: " + IPAddress);
 
     handler = new Handler(new Handler.Callback() {
       @Override
@@ -216,19 +197,42 @@ public class AugmentedFacesActivity extends AppCompatActivity implements GLSurfa
       }
     });
 
-    try {
-      socket = new DatagramSocket(port, InetAddress.getByName(ipToBroadcast(getIPAddress(true))));
-      socket.setBroadcast(true);
-    } catch (SocketException | UnknownHostException e) {
-      Log.d(TAG, "onCreate: " + e);
-      e.printStackTrace();
+    if(IPAddress.length() > 0) {
+      try {
+        socket = new DatagramSocket(port, InetAddress.getByName(ipToBroadcast(getIPAddress(true))));
+        socket.setBroadcast(true);
+      } catch (SocketException | UnknownHostException e) {
+        Log.d(TAG, "onCreate: " + e);
+        e.printStackTrace();
+      }
+      packet = new DatagramPacket(buffer, buffer.length);
+      Timer timer = new Timer();
+      timer.schedule(new RecordTimerTask(), 0, 100);
+    }else {
+      broadcastText.setText("IP地址获取失败");
     }
 
+    //正数计时设置初始值（重置）
+    mChronometer.setBase(0);
+    //正数计时事件监听器，时间发生变化时可进行操作
+    mChronometer.setOnChronometerTickListener(this);
+    //设置格式(默认"MM:SS"格式)
+    mChronometer.setFormat("%s");
+    mChronometer.setText(FormatMiss(current));
+    initData();
 
-    packet = new DatagramPacket(buffer, buffer.length);
+    // Set up renderer.
+    surfaceView.setPreserveEGLContextOnPause(true);
+    surfaceView.setEGLContextClientVersion(2);
+    surfaceView.setEGLConfigChooser(8, 8, 8, 8, 16, 0); // Alpha used for plane blending.
+    surfaceView.setRenderer(this);
+    surfaceView.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
+    surfaceView.setWillNotDraw(false);
 
-    Timer timer = new Timer();
-    timer.schedule(new RecordTimerTask(), 0, 100);
+    distanceView.setVisibility(View.INVISIBLE);
+    alertView.setText((String) this.getResources().getText(R.string.too_far));
+    alertView.setVisibility(View.VISIBLE);
+    installRequested = false;
   }
 
   @Override
@@ -1020,5 +1024,22 @@ public class AugmentedFacesActivity extends AppCompatActivity implements GLSurfa
         e.printStackTrace();
       }
     }
+  }
+
+  public String getLocalIpAddress() {
+    try {
+      for (Enumeration<NetworkInterface> en = NetworkInterface.getNetworkInterfaces(); en.hasMoreElements();) {
+        NetworkInterface intf = en.nextElement();
+        for (Enumeration<InetAddress> enumIpAddr = intf.getInetAddresses(); enumIpAddr.hasMoreElements();) {
+          InetAddress inetAddress = enumIpAddr.nextElement();
+          if (!inetAddress.isLoopbackAddress()) {
+            return inetAddress.getHostAddress().toString();
+          }
+        }
+      }
+    } catch (SocketException ex) {
+      Log.e(TAG, ex.toString());
+    }
+    return null;
   }
 }

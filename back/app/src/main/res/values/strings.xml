@@ -15,7 +15,7 @@
    limitations under the License.
 -->
 <resources>
-  <string translatable="false" name="app_name">ARRecorder_Back</string>
+  <string translatable="false" name="app_name">DepthRecorder_Back</string>
   <string translatable="false" name="depth_use_explanation">When Depth is enabled on supported devices, virtual objects adapt to the environment by blending in with the real world.</string>
   <string translatable="false" name="button_text_enable_depth">Enable</string>
   <string translatable="false" name="button_text_disable_depth">Disable</string>
@@ -27,7 +27,7 @@
     <item>Show depth map</item>
   </string-array>
   <string translatable="false" name="options_title_instant_placement">Instant Placement options</string>
-    <string name="noBroadcast">无局域网广播指令</string>
+    <string name="noBroadcast">无局域网指令</string>
     <string-array translatable="false" name="instant_placement_options_array">
     <item>Enable Instant Placement</item>
   </string-array>
